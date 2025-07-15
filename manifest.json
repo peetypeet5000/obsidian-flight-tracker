@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "obsidian-flight-tracker",
+	"name": "Obsidian Flight Tracker",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Automatically insert tracking details for your flight based on the flight number.",
+	"author": "Peter LaMontagne",
+	"authorUrl": "https://peterlamontagne.com",
 	"isDesktopOnly": false
 }
