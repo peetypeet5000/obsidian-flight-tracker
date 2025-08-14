@@ -1,78 +1,130 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {
+  App,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  MarkdownView,
+  Editor,
+} from 'obsidian';
 
-// Remember to rename these classes and interfaces!
-
-interface FlightTrackerPluginSettings {
-	mySetting: string;
+interface MyPluginSettings {
+  triggerPhrase: string;
 }
 
-const DEFAULT_SETTINGS: FlightTrackerPluginSettings = {
-	mySetting: 'default'
+interface myEditedView extends MarkdownView {
+  phraseWidgetEl?: HTMLDivElement
+
 }
 
-export default class ObsidianFlightPlugin extends Plugin {
-	settings: FlightTrackerPluginSettings;
+const DEFAULT_SETTINGS: MyPluginSettings = {
+  triggerPhrase: 'TEST',
+};
 
-	async onload() {
-		await this.loadSettings();
+export default class PhraseWidgetPlugin extends Plugin {
+  settings: MyPluginSettings;
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'refresh-flights',
-			name: 'Refresh Flights',
-			callback: () => {
-				console.log("TODO: Refresh Flights");
-			}
-		});
+  async onload() {
+    console.log('Loading Flight Tracker plugin');
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new FlightsTrackerSettingTab(this.app, this));
+    await this.loadSettings();
+    this.addSettingTab(new SampleSettingTab(this.app, this));
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+    // Listen for when the user types in a note
+    this.registerEvent(
+      this.app.workspace.on('editor-change', (e, v) => {this.handleEditorChange(e, v)})
+    );
+  }
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+  onunload() {
+    console.log('Unloading Phrase-Triggered Widget plugin');
+  }
 
-	onunload() {
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
 
-	}
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+  handleEditorChange(editor: Editor, view: MarkdownView) {
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+    const cursorPos = editor.getCursor();
+
+    const content = editor.getLine(cursorPos.line);
+
+    console.log(content);
+
+    if (content && content.includes(this.settings.triggerPhrase)) {
+      this.showWidget(view);
+    } else {
+      this.hideWidget(view);
+    }
+  }
+
+  showWidget(view: myEditedView) {
+    console.log("Found phrase");
+    // Avoid multiple widgets
+    if (view.phraseWidgetEl) return;
+    console.log("Adding widget");
+
+    const widgetEl = view.containerEl.createDiv({
+      cls: 'phrase-widget',
+      text: `Trigger phrase "${this.settings.triggerPhrase}" detected!`,
+    });
+
+    // You could style it or add more complex content here
+    widgetEl.style.position = 'absolute';
+    widgetEl.style.top = '20px';
+    widgetEl.style.right = '20px';
+    widgetEl.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+    widgetEl.style.color = 'white';
+    widgetEl.style.padding = '8px 12px';
+    widgetEl.style.borderRadius = '4px';
+    widgetEl.style.zIndex = '100';
+
+    view.phraseWidgetEl = widgetEl;
+  }
+
+  hideWidget(view: myEditedView) {
+    console.log('Phrase not found');
+    const widgetEl = view.phraseWidgetEl;
+    if (widgetEl) {
+      widgetEl.remove();
+      console.log('Removed Widget');
+      delete view.phraseWidgetEl;
+    }
+  }
 }
 
-class FlightsTrackerSettingTab extends PluginSettingTab {
-	plugin: ObsidianFlightPlugin;
+/**
+ * Settings Tab UI
+ */
+class SampleSettingTab extends PluginSettingTab {
+  plugin: PhraseWidgetPlugin;
 
-	constructor(app: App, plugin: ObsidianFlightPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+  constructor(app: App, plugin: PhraseWidgetPlugin) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	display(): void {
-		const {containerEl} = this;
+  display(): void {
+    const { containerEl } = this;
 
-		containerEl.empty();
+    containerEl.empty();
+    containerEl.createEl('h2', { text: 'Settings for Phrase-Triggered Widget' });
 
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+    new Setting(containerEl)
+      .setName('Trigger Phrase')
+      .setDesc('Type this phrase in any note to show the widget.')
+      .addText(text =>
+        text
+          .setPlaceholder('Enter phrase')
+          .setValue(this.plugin.settings.triggerPhrase)
+          .onChange(async (value) => {
+            this.plugin.settings.triggerPhrase = value;
+            await this.plugin.saveSettings();
+          })
+      );
+  }
 }
