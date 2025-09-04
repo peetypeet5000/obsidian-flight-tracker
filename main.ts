@@ -1,130 +1,122 @@
 import {
-  App,
-  Plugin,
-  PluginSettingTab,
-  Setting,
-  MarkdownView,
-  Editor,
-} from 'obsidian';
+	App,
+	Plugin,
+	PluginSettingTab,
+	MarkdownPostProcessorContext,
+	Setting,
+	Modal,
+} from "obsidian";
+import { StrictMode } from "react";
+import { Root, createRoot } from "react-dom/client";
+import { ReactView } from "./ReactView";
 
-interface MyPluginSettings {
-  triggerPhrase: string;
+interface FlightPluginSettings {
+	triggerPhrase: string;
 }
 
-interface myEditedView extends MarkdownView {
-  phraseWidgetEl?: HTMLDivElement
-
-}
-
-const DEFAULT_SETTINGS: MyPluginSettings = {
-  triggerPhrase: 'TEST',
+const DEFAULT_SETTINGS: FlightPluginSettings = {
+	triggerPhrase: "TEST",
 };
 
-export default class PhraseWidgetPlugin extends Plugin {
-  settings: MyPluginSettings;
+export default class FlightTrackerPlugin extends Plugin {
+	root: Root | null = null;
+	settings: FlightPluginSettings;
 
-  async onload() {
-    console.log('Loading Flight Tracker plugin');
+	async onload() {
+		console.log("Loading Flight Tracker plugin");
 
-    await this.loadSettings();
-    this.addSettingTab(new SampleSettingTab(this.app, this));
+		await this.loadSettings();
+		this.addSettingTab(new SampleSettingTab(this.app, this));
 
-    // Listen for when the user types in a note
-    this.registerEvent(
-      this.app.workspace.on('editor-change', (e, v) => {this.handleEditorChange(e, v)})
-    );
-  }
+		this.registerMarkdownPostProcessor(
+			(el: HTMLElement, cts: MarkdownPostProcessorContext) => {
+				const marker = "TEST";
+				const paragraphs = el.querySelectorAll("p");
 
-  onunload() {
-    console.log('Unloading Phrase-Triggered Widget plugin');
-  }
+				paragraphs.forEach((p) => {
+					if (p.innerText.contains(marker)) {
+						// Cut existing line of HTML into sections
+						const parts = p.innerHTML.split(marker);
+						p.innerHTML = "";
 
-  async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-  }
+						p.insertAdjacentHTML("beforeend", parts[0]);
 
-  async saveSettings() {
-    await this.saveData(this.settings);
-  }
+						//Add widget where keyword was
+						const widget = document.createElement("span");
+						widget.classList.add("inline-widget");
+						widget.textContent = "Ass";
+						widget.style.cursor = "pointer";
 
-  handleEditorChange(editor: Editor, view: MarkdownView) {
+						// Add event listener to open the modal
+						widget.onclick = () => {
+							new FlightModal(this.app).open();
+						};
 
-    const cursorPos = editor.getCursor();
+						p.appendChild(widget);
 
-    const content = editor.getLine(cursorPos.line);
+						if (parts[1]) {
+							p.insertAdjacentHTML("beforeend", parts[1]);
+						}
+					}
+				});
+			},
+		);
+	}
 
-    console.log(content);
+	onunload() {
+		console.log("Unloading Flight Tracker plugin");
+	}
 
-    if (content && content.includes(this.settings.triggerPhrase)) {
-      this.showWidget(view);
-    } else {
-      this.hideWidget(view);
-    }
-  }
+	async loadSettings() {
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			await this.loadData(),
+		);
+	}
 
-  showWidget(view: myEditedView) {
-    console.log("Found phrase");
-    // Avoid multiple widgets
-    if (view.phraseWidgetEl) return;
-    console.log("Adding widget");
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+}
 
-    const widgetEl = view.containerEl.createDiv({
-      cls: 'phrase-widget',
-      text: `Trigger phrase "${this.settings.triggerPhrase}" detected!`,
-    });
-
-    // You could style it or add more complex content here
-    widgetEl.style.position = 'absolute';
-    widgetEl.style.top = '20px';
-    widgetEl.style.right = '20px';
-    widgetEl.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
-    widgetEl.style.color = 'white';
-    widgetEl.style.padding = '8px 12px';
-    widgetEl.style.borderRadius = '4px';
-    widgetEl.style.zIndex = '100';
-
-    view.phraseWidgetEl = widgetEl;
-  }
-
-  hideWidget(view: myEditedView) {
-    console.log('Phrase not found');
-    const widgetEl = view.phraseWidgetEl;
-    if (widgetEl) {
-      widgetEl.remove();
-      console.log('Removed Widget');
-      delete view.phraseWidgetEl;
-    }
-  }
+export class FlightModal extends Modal {
+	constructor(app: App) {
+		super(app);
+		this.setContent("This is a test!");
+	}
 }
 
 /**
  * Settings Tab UI
  */
 class SampleSettingTab extends PluginSettingTab {
-  plugin: PhraseWidgetPlugin;
+	plugin: FlightTrackerPlugin;
 
-  constructor(app: App, plugin: PhraseWidgetPlugin) {
-    super(app, plugin);
-    this.plugin = plugin;
-  }
+	constructor(app: App, plugin: FlightTrackerPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
 
-  display(): void {
-    const { containerEl } = this;
+	display(): void {
+		const { containerEl } = this;
 
-    containerEl.empty();
-    containerEl.createEl('h2', { text: 'Settings for Phrase-Triggered Widget' });
+		containerEl.empty();
+		containerEl.createEl("h2", {
+			text: "Settings for Phrase-Triggered Widget",
+		});
 
-    new Setting(containerEl)
-      .setName('Trigger Phrase')
-      .setDesc('Type this phrase in any note to show the widget.')
-      .addText(text =>
-        text
-          .setPlaceholder('Enter phrase')
-          .setValue(this.plugin.settings.triggerPhrase)
-          .onChange(async (value) => {
-            this.plugin.settings.triggerPhrase = value;
-            await this.plugin.saveSettings();
-          })
-      );
-  }
+		new Setting(containerEl)
+			.setName("Trigger Phrase")
+			.setDesc("Type this phrase in any note to show the widget.")
+			.addText((text) =>
+				text
+					.setPlaceholder("Enter phrase")
+					.setValue(this.plugin.settings.triggerPhrase)
+					.onChange(async (value) => {
+						this.plugin.settings.triggerPhrase = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+	}
 }

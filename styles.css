@@ -6,3 +6,16 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+.inline-widget {
+  margin: 0 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--interactive-accent);
+  color: white;
+  font-size: 0.9em;
+}
+
+.inline-widget:hover {
+  opacity: 0.8;
+}
