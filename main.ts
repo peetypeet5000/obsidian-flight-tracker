@@ -4,11 +4,17 @@ import {
 	PluginSettingTab,
 	MarkdownPostProcessorContext,
 	Setting,
-	Modal,
 } from "obsidian";
-import { StrictMode } from "react";
-import { Root, createRoot } from "react-dom/client";
-import { ReactView } from "./ReactView";
+import {
+	Decoration,
+	DecorationSet,
+	EditorView,
+	MatchDecorator,
+	ViewPlugin,
+	ViewUpdate,
+	WidgetType,
+} from "@codemirror/view";
+import { FlightModal } from "flightModal";
 
 interface FlightPluginSettings {
 	triggerPhrase: string;
@@ -18,9 +24,12 @@ const DEFAULT_SETTINGS: FlightPluginSettings = {
 	triggerPhrase: "TEST",
 };
 
+const FLIGHT_REGEX = /\b[A-Z]{2,3}\d{1,4}\b/g;
+
 export default class FlightTrackerPlugin extends Plugin {
-	root: Root | null = null;
 	settings: FlightPluginSettings;
+	flightCodes: Set<string> = new Set();
+	flightData: Map<string, any> = new Map();
 
 	async onload() {
 		console.log("Loading Flight Tracker plugin");
@@ -28,37 +37,107 @@ export default class FlightTrackerPlugin extends Plugin {
 		await this.loadSettings();
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 
+		// Register markdown post processor for reading view
 		this.registerMarkdownPostProcessor(
 			(el: HTMLElement, cts: MarkdownPostProcessorContext) => {
-				const marker = "TEST";
-				const paragraphs = el.querySelectorAll("p");
+				this.processRendered(el);
+			},
+		);
 
-				paragraphs.forEach((p) => {
-					if (p.innerText.contains(marker)) {
-						// Cut existing line of HTML into sections
-						const parts = p.innerHTML.split(marker);
-						p.innerHTML = "";
+		// Register Editor Extension for Live View and Markdown mode
+		this.registerEditorExtension(this.createEditorExtension());
+	}
 
-						p.insertAdjacentHTML("beforeend", parts[0]);
+	// Whenever a new flight code is found, store it in memory
+	addFlightCode(code: string) {
+		if (!this.flightCodes.has(code)) {
+			this.flightCodes.add(code);
+			console.log("New flight code found:", code);
+			this.updateFlightData(); // optional immediate fetch
+		}
+	}
 
-						//Add widget where keyword was
-						const widget = document.createElement("span");
-						widget.classList.add("inline-widget");
-						widget.textContent = "Ass";
-						widget.style.cursor = "pointer";
+	// Update flight data in background
+	async updateFlightData() {
+		for (const code of this.flightCodes) {
+			if (!this.flightData.has(code)) {
+				// 🔧 Replace with your real API call
+				const data = await this.fakeApiCall(code);
+				this.flightData.set(code, data);
+			}
+		}
+	}
 
-						// Add event listener to open the modal
-						widget.onclick = () => {
-							new FlightModal(this.app).open();
-						};
+	async fakeApiCall(code: string) {
+		// Replace this with real API later
+		return {
+			status: "On time",
+			departure: "SFO",
+			arrival: "LAX",
+			code,
+		};
+	}
 
-						p.appendChild(widget);
+	// Render the widget in both markdown and reading mode
+	renderWidget(flightCode: string): HTMLElement {
+		// Add flight code if not already present
+		this.addFlightCode(flightCode);
 
-						if (parts[1]) {
-							p.insertAdjacentHTML("beforeend", parts[1]);
-						}
-					}
-				});
+		const widget = document.createElement("span");
+		widget.classList.add("inline-widget");
+		widget.textContent = flightCode;
+		widget.style.cursor = "pointer";
+
+		// Set click handler to create modal, populate modal with fetched flight data
+		widget.onclick = () =>
+			new FlightModal(
+				this.app,
+				flightCode,
+				this.flightData.get(flightCode),
+			).open();
+
+		return widget;
+	}
+
+	// Process token and replace HTML in reading view
+	processRendered(el: HTMLElement) {
+		el.querySelectorAll("p").forEach((p) => {
+			if (FLIGHT_REGEX.test(p.innerText)) {
+				p.innerHTML = p.innerHTML.replace(
+					FLIGHT_REGEX,
+					(code) => this.renderWidget(code).outerHTML,
+				);
+			}
+		});
+	}
+
+	// Process token and replace in editor view
+	createEditorExtension() {
+		const deco = new MatchDecorator({
+			regexp: FLIGHT_REGEX,
+			decoration: (match) =>
+				Decoration.replace({
+					widget: new InlineWidgetView(this.app, this, match[0]),
+				}),
+		});
+
+		return ViewPlugin.fromClass(
+			class {
+				decorations: DecorationSet;
+
+				constructor(view: EditorView) {
+					this.decorations = deco.createDeco(view);
+				}
+
+				update(update: ViewUpdate) {
+					this.decorations = deco.updateDeco(
+						update,
+						this.decorations,
+					);
+				}
+			},
+			{
+				decorations: (v) => v.decorations,
 			},
 		);
 	}
@@ -80,11 +159,36 @@ export default class FlightTrackerPlugin extends Plugin {
 	}
 }
 
-export class FlightModal extends Modal {
-	constructor(app: App) {
-		super(app);
-		this.setContent("This is a test!");
+// Widget view for Live Preview and Source Mode
+class InlineWidgetView extends WidgetType {
+	app: App;
+	plugin: FlightTrackerPlugin;
+	flightCode: string;
+
+	constructor(app: App, plugin: FlightTrackerPlugin, flightCode: string) {
+		super();
+		this.app = app;
+		this.plugin = plugin;
+		this.flightCode = flightCode;
 	}
+
+	toDOM() {
+		return this.plugin.renderWidget(this.flightCode);
+	}
+
+	ignoreEvent() {
+		return false; // let clicks work
+	}
+
+	// Optional but recommended: avoid remounting if nothing changed
+	//eq(other: InlineWidgetView) {
+	//	return this.app === other.app;
+	//}
+
+	// Optional: ensures DOM updates don’t replace widget unnecessarily
+	//updateDOM(dom: HTMLElement) {
+	//	return false; // false → always recreate
+	//}
 }
 
 /**
